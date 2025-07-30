@@ -1,2 +1,5 @@
 nsf_reader
 .claude/
+reference/
+*.wav
+nsf_player
