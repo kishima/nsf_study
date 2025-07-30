@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -g
+CFLAGS = -Wall -Wextra -std=c99 -g -D_GNU_SOURCE
 TARGET = nsf_reader
 SOURCE = nsf_reader.c
 

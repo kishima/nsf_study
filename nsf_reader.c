@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <ctype.h>
+#include <iconv.h>
+#include <errno.h>
 
 typedef struct {
     char header[5];         // "NESM" + 0x1A
@@ -46,18 +48,58 @@ int read_nsf_header(const char* filename, nsf_header_t* header) {
     return 0;
 }
 
+char* convert_sjis_to_utf8(const char* sjis_data, int max_len) {
+    iconv_t cd = iconv_open("UTF-8", "SHIFT-JIS");
+    if (cd == (iconv_t)-1) {
+        printf("[DEBUG] iconv_open failed: %s\n", strerror(errno));
+        return NULL;
+    }
+    
+    size_t sjis_len = strnlen(sjis_data, max_len);
+    if (sjis_len == 0) {
+        iconv_close(cd);
+        return NULL;
+    }
+    
+    size_t utf8_len = sjis_len * 4;
+    char* utf8_str = malloc(utf8_len + 1);
+    if (!utf8_str) {
+        iconv_close(cd);
+        return NULL;
+    }
+    
+    char* sjis_ptr = (char*)sjis_data;
+    char* utf8_ptr = utf8_str;
+    size_t sjis_remaining = sjis_len;
+    size_t utf8_remaining = utf8_len;
+    
+    size_t result = iconv(cd, &sjis_ptr, &sjis_remaining, &utf8_ptr, &utf8_remaining);
+    
+    if (result == (size_t)-1 && errno != EILSEQ && errno != EINVAL) {
+        printf("[DEBUG] iconv failed: %s, remaining: %zu\n", strerror(errno), sjis_remaining);
+        iconv_close(cd);
+        free(utf8_str);
+        return NULL;
+    }
+    
+    iconv_close(cd);
+    *utf8_ptr = '\0';
+    return utf8_str;
+}
+
 void print_string_field(const char* field_name, const char* data, int max_len) {
     printf("%s: ", field_name);
     
-    int has_printable = 0;
-    for (int i = 0; i < max_len && data[i] != '\0'; i++) {
-        if (isprint((unsigned char)data[i])) {
-            has_printable = 1;
-            break;
-        }
+    if (strnlen(data, max_len) == 0) {
+        printf("(empty)\n");
+        return;
     }
     
-    if (has_printable) {
+    char* utf8_str = convert_sjis_to_utf8(data, max_len);
+    if (utf8_str) {
+        printf("\"%s\"", utf8_str);
+        free(utf8_str);
+    } else {
         printf("\"");
         for (int i = 0; i < max_len && data[i] != '\0'; i++) {
             if (isprint((unsigned char)data[i])) {
@@ -67,8 +109,6 @@ void print_string_field(const char* field_name, const char* data, int max_len) {
             }
         }
         printf("\"");
-    } else {
-        printf("(empty)");
     }
     
     printf(" [HEX: ");
